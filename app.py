@@ -8,14 +8,13 @@ st.markdown("**ABCD Classification & Weighted Ranking Tool**")
 @st.cache_data
 def load_and_process(uploaded_file):
     df = pd.read_excel(uploaded_file)
-    # Item Key processing
+    # Item Key
     item = df.groupby('Itemkey').agg({
         'NetVal': 'sum',
         'GAL': 'sum',
         'Custkey': 'nunique',
         'Oeordno': 'nunique',
-        'CUSTOM2': 'first',
-        'Unitprice': 'mean'
+        'CUSTOM2': 'first'
     }).reset_index()
     
     item = item.rename(columns={
@@ -23,8 +22,7 @@ def load_and_process(uploaded_file):
         'GAL': 'Total_Gallons',
         'Custkey': 'Active_Customers',
         'Oeordno': 'Total_Orders',
-        'CUSTOM2': 'Technology',
-        'Unitprice': 'ASP'
+        'CUSTOM2': 'Technology'
     }).fillna({'Technology': 'Unknown'})
     
     for col in ['Total_Sales', 'Total_Gallons', 'Total_Orders', 'Active_Customers']:
@@ -52,8 +50,7 @@ if uploaded_file:
     with st.spinner("Processing..."):
         item_data, raw_df = load_and_process(uploaded_file)
     
-    # Main Table
-    final = item_data[['Rank', 'Itemkey', 'Technology', 'Total_Sales', 'ASP', 'ABCD_Class', 'Cum_Sales_Pct']]
+    final = item_data[['Rank', 'Itemkey', 'Technology', 'Total_Sales', 'ABCD_Class', 'Cum_Sales_Pct']]
     
     col1, col2 = st.columns(2)
     tech_filter = col1.multiselect("Technology", options=sorted(final['Technology'].unique()), default=[])
@@ -67,13 +64,12 @@ if uploaded_file:
     
     st.dataframe(filtered.style.format({
         'Total_Sales': '${:,.0f}',
-        'ASP': '${:,.2f}',
         'Cum_Sales_Pct': '{:.1f}%'
     }), use_container_width=True, height=600)
     
     # Drill-down
-    st.subheader("Decision Detail - Click an Itemkey below")
-    selected_item = st.selectbox("Select Itemkey", options=filtered['Itemkey'])
+    st.subheader("Decision Detail")
+    selected_item = st.selectbox("Select Itemkey to inspect", options=filtered['Itemkey'])
     
     if selected_item:
         detail = raw_df[raw_df['Itemkey'] == selected_item]
@@ -82,18 +78,18 @@ if uploaded_file:
         col1, col2 = st.columns(2)
         with col1:
             st.write(f"**Item:** {selected_item}")
-            st.write(f"**Technology:** {detail['CUSTOM2'].iloc[0] if 'CUSTOM2' in detail.columns else 'N/A'}")
+            st.write(f"**Technology:** {detail['CUSTOM2'].iloc[0] if not detail.empty and 'CUSTOM2' in detail.columns else 'N/A'}")
             st.write(f"**Total Revenue:** ${detail['NetVal'].sum():,}")
             st.write(f"**Total Volume:** {detail['GAL'].sum():,} GAL")
-            st.write(f"**ASP:** ${detail['NetVal'].sum() / detail['GAL'].sum():.2f}" if detail['GAL'].sum() > 0 else "N/A")
+            if detail['GAL'].sum() > 0:
+                st.write(f"**ASP:** ${detail['NetVal'].sum() / detail['GAL'].sum():.2f}")
         with col2:
             st.write("**Top Customers**")
             for cust, sales in top_customers.items():
-                st.write(f"{cust}: ${sales:,.0f} ({sales/detail['NetVal'].sum()*100:.1f}%)")
+                pct = sales / detail['NetVal'].sum() * 100 if detail['NetVal'].sum() > 0 else 0
+                st.write(f"{cust}: ${sales:,.0f} ({pct:.1f}%)")
         
-        st.write("**All Transactions for this Item**")
-        st.dataframe(detail[['Customer_Name', 'NetVal', 'GAL', 'Qty', 'Invdate']].style.format({
-            'NetVal': '${:,.0f}'
-        }), use_container_width=True)
+        st.write("**All Transactions**")
+        st.dataframe(detail[['Customer_Name', 'NetVal', 'GAL', 'Qty', 'Invdate']].style.format({'NetVal': '${:,.0f}'}), use_container_width=True)
 else:
     st.info("Upload your Excel file to begin")
