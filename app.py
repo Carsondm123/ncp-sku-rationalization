@@ -79,4 +79,21 @@ if uploaded_file:
             st.write(f"**Total Revenue:** ${detail['NetVal'].sum():,}")
             st.write(f"**Total Volume:** {detail['GAL'].sum():,} GAL")
             if detail['GAL'].sum() > 0:
-                st.write(f"
+                st.write(f"**ASP:** ${detail['NetVal'].sum() / detail['GAL'].sum():.2f}")
+        with col2:
+            st.write("**Top Customers**")
+            if not detail.empty:
+                try:
+                    top = detail.groupby('Customer_Name')['NetVal'].sum().sort_values(ascending=False).head(5)
+                    for cust, sales in top.items():
+                        pct = (sales / detail['NetVal'].sum() * 100) if detail['NetVal'].sum() > 0 else 0
+                        st.write(f"{cust}: ${sales:,.0f} ({pct:.1f}%)")
+                except:
+                    st.write("Unable to calculate top customers")
+            else:
+                st.write("No data available")
+        
+        st.write("**All Transactions**")
+        st.dataframe(detail[['Customer_Name', 'NetVal', 'GAL', 'Qty', 'Invdate']].style.format({'NetVal': '${:,.0f}'}), use_container_width=True)
+else:
+    st.info("Upload your Excel file to begin")
