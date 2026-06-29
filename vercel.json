@@ -1,7 +1,13 @@
 {
   "version": 2,
-  "buildCommand": "pip install -r requirements.txt --break-system-packages --user",
+  "buildCommand": "pip install -r requirements.txt --break-system-packages",
   "outputDirectory": ".",
-  "installCommand": "pip install -r requirements.txt --break-system-packages --user",
-  "framework": null
+  "installCommand": "pip install -r requirements.txt --break-system-packages",
+  "framework": null,
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/app.py"
+    }
+  ]
 }
