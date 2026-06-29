@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from datetime import datetime
 
 st.set_page_config(page_title="NCP · SKU Rationalization Console", layout="wide")
 st.title("🧩 NCP · SKU Rationalization Console")
@@ -51,4 +49,36 @@ def process_data(df):
     }).reset_index()
     cust = cust.rename(columns={'NetVal': 'Total_Sales', 'Itemkey': 'Unique_Items'})
     cust = cust.sort_values('Total_Sales', ascending=False).reset_index(drop=True)
-    cust['Rank'] = range(1
+    cust['Rank'] = range(1, len(cust)+1)
+    total_c = cust['Total_Sales'].sum()
+    cust['Cum_Sales_Pct'] = (cust['Total_Sales'].cumsum() / total_c * 100).round(2)
+    cust['ABCD_Class'] = cust['Cum_Sales_Pct'].apply(lambda x: 'A' if x <= 70 else 'B' if x <= 85 else 'C' if x <= 98 else 'D')
+    
+    return item, cust, df
+
+uploaded_file = st.file_uploader("Upload your Sales Data Excel file", type=["xlsx"])
+
+if uploaded_file:
+    with st.spinner("Processing..."):
+        df = pd.read_excel(uploaded_file)
+        item_data, cust_data, raw_df = process_data(df)
+    
+    view = st.radio("View Mode", ["Item Key View", "Customer View"], horizontal=True)
+    
+    if view == "Item Key View":
+        final = item_data[['Rank', 'Itemkey', 'Technology', 'Total_Sales', 'ABCD_Class', 'Cum_Sales_Pct']]
+        st.dataframe(final, use_container_width=True, height=700)
+    else:
+        final = cust_data[['Rank', 'Customer_Name', 'Total_Sales', 'Unique_Items', 'ABCD_Class']]
+        st.dataframe(final, use_container_width=True, height=700)
+        
+        customer = st.selectbox("Select Customer to see items bought", options=final['Customer_Name'])
+        if customer:
+            items = raw_df[raw_df['Customer_Name'] == customer]
+            st.write(f"**Items bought by {customer}**")
+            st.dataframe(items[['Itemkey', 'Desc1', 'NetVal', 'GAL']], use_container_width=True)
+    
+    csv = final.to_csv(index=False).encode()
+    st.download_button("📥 Download Report", csv, "report.csv", "text/csv")
+else:
+    st.info("Upload your Excel file to begin")
