@@ -82,13 +82,13 @@ if uploaded_file:
                 st.write(f"**ASP:** ${detail['NetVal'].sum() / detail['GAL'].sum():.2f}")
         with col2:
             st.write("**Top Customers**")
-            if not detail.empty and 'NetVal' in detail.columns:
+            if not detail.empty and 'NetVal' in detail.columns and pd.api.types.is_numeric_dtype(detail['NetVal']):
                 top_customers = detail.groupby('Customer_Name')['NetVal'].sum().nlargest(5)
                 for cust, sales in top_customers.items():
                     pct = (sales / detail['NetVal'].sum() * 100) if detail['NetVal'].sum() > 0 else 0
                     st.write(f"{cust}: ${sales:,.0f} ({pct:.1f}%)")
             else:
-                st.write("No transaction data available")
+                st.write("No transaction data available for this item")
         
         st.write("**All Transactions**")
         st.dataframe(detail[['Customer_Name', 'NetVal', 'GAL', 'Qty', 'Invdate']].style.format({'NetVal': '${:,.0f}'}), use_container_width=True)
