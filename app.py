@@ -8,13 +8,14 @@ st.markdown("**ABCD Classification & Weighted Ranking Tool**")
 @st.cache_data
 def load_and_process(uploaded_file):
     df = pd.read_excel(uploaded_file)
-    # Item Key
+    # Item Key processing
     item = df.groupby('Itemkey').agg({
         'NetVal': 'sum',
         'GAL': 'sum',
         'Custkey': 'nunique',
         'Oeordno': 'nunique',
-        'CUSTOM2': 'first'
+        'CUSTOM2': 'first',
+        'Unitprice': 'mean'
     }).reset_index()
     
     item = item.rename(columns={
@@ -22,7 +23,8 @@ def load_and_process(uploaded_file):
         'GAL': 'Total_Gallons',
         'Custkey': 'Active_Customers',
         'Oeordno': 'Total_Orders',
-        'CUSTOM2': 'Technology'
+        'CUSTOM2': 'Technology',
+        'Unitprice': 'ASP'
     }).fillna({'Technology': 'Unknown'})
     
     for col in ['Total_Sales', 'Total_Gallons', 'Total_Orders', 'Active_Customers']:
@@ -39,63 +41,59 @@ def load_and_process(uploaded_file):
     item = item.sort_values('Weighted_Score', ascending=False).reset_index(drop=True)
     item['Rank'] = range(1, len(item)+1)
     total = item['Total_Sales'].sum()
-    item['Cum_Sales_Pct'] = (item['Total_Sales'].cumsum() / total * 100).round(2)
+    item['Cum_Sales_Pct'] = (item['Total_Sales'].cumsum() / total * 100).round(1)
     item['ABCD_Class'] = item['Cum_Sales_Pct'].apply(lambda x: 'A' if x <= 70 else 'B' if x <= 85 else 'C' if x <= 95 else 'D')
     
-    # Customer
-    cust = df.groupby('Customer_Name').agg({
-        'NetVal': 'sum',
-        'Itemkey': 'nunique',
-        'Oeordno': 'nunique'
-    }).reset_index()
-    cust = cust.rename(columns={'NetVal': 'Total_Sales', 'Itemkey': 'Unique_Items'})
-    cust = cust.sort_values('Total_Sales', ascending=False).reset_index(drop=True)
-    cust['Rank'] = range(1, len(cust)+1)
-    total_c = cust['Total_Sales'].sum()
-    cust['Cum_Sales_Pct'] = (cust['Total_Sales'].cumsum() / total_c * 100).round(2)
-    cust['ABCD_Class'] = cust['Cum_Sales_Pct'].apply(lambda x: 'A' if x <= 70 else 'B' if x <= 85 else 'C' if x <= 98 else 'D')
-    
-    return item, cust, df
+    return item, df
 
 uploaded_file = st.file_uploader("Upload your Sales Data Excel file", type=["xlsx"])
 
 if uploaded_file:
     with st.spinner("Processing..."):
-        df = pd.read_excel(uploaded_file)
-        item_data, cust_data, raw_df = load_and_process(uploaded_file)
+        item_data, raw_df = load_and_process(uploaded_file)
     
-    view = st.radio("View Mode", ["Item Key View", "Customer View"], horizontal=True)
+    # Main Table
+    final = item_data[['Rank', 'Itemkey', 'Technology', 'Total_Sales', 'ASP', 'ABCD_Class', 'Cum_Sales_Pct']]
     
-    if view == "Item Key View":
-        final = item_data[['Rank', 'Itemkey', 'Technology', 'Total_Sales', 'ABCD_Class', 'Cum_Sales_Pct']]
+    col1, col2 = st.columns(2)
+    tech_filter = col1.multiselect("Technology", options=sorted(final['Technology'].unique()), default=[])
+    abcd_filter = col2.multiselect("ABCD Class", ['A','B','C','D'], default=['A','B'])
+    
+    filtered = final
+    if tech_filter:
+        filtered = filtered[filtered['Technology'].isin(tech_filter)]
+    if abcd_filter:
+        filtered = filtered[filtered['ABCD_Class'].isin(abcd_filter)]
+    
+    st.dataframe(filtered.style.format({
+        'Total_Sales': '${:,.0f}',
+        'ASP': '${:,.2f}',
+        'Cum_Sales_Pct': '{:.1f}%'
+    }), use_container_width=True, height=600)
+    
+    # Drill-down
+    st.subheader("Decision Detail - Click an Itemkey below")
+    selected_item = st.selectbox("Select Itemkey", options=filtered['Itemkey'])
+    
+    if selected_item:
+        detail = raw_df[raw_df['Itemkey'] == selected_item]
+        top_customers = detail.groupby('Customer_Name')['NetVal'].sum().nlargest(5)
         
         col1, col2 = st.columns(2)
-        tech_filter = col1.multiselect("Technology", options=sorted(final['Technology'].unique()), default=[])
-        abcd_filter = col2.multiselect("ABCD Class", ['A','B','C','D'], default=['A','B'])
+        with col1:
+            st.write(f"**Item:** {selected_item}")
+            st.write(f"**Technology:** {detail['CUSTOM2'].iloc[0] if 'CUSTOM2' in detail.columns else 'N/A'}")
+            st.write(f"**Total Revenue:** ${detail['NetVal'].sum():,}")
+            st.write(f"**Total Volume:** {detail['GAL'].sum():,} GAL")
+            st.write(f"**ASP:** ${detail['NetVal'].sum() / detail['GAL'].sum():.2f}" if detail['GAL'].sum() > 0 else "N/A")
+        with col2:
+            st.write("**Top Customers**")
+            for cust, sales in top_customers.items():
+                st.write(f"{cust}: ${sales:,.0f} ({sales/detail['NetVal'].sum()*100:.1f}%)")
         
-        filtered = final
-        if tech_filter:
-            filtered = filtered[filtered['Technology'].isin(tech_filter)]
-        if abcd_filter:
-            filtered = filtered[filtered['ABCD_Class'].isin(abcd_filter)]
-        
-        # Format Total Sales as currency
-        st.dataframe(filtered.style.format({'Total_Sales': '${:,.0f}'}), use_container_width=True, height=700)
-        
-    else:  # Customer View
-        final = cust_data[['Rank', 'Customer_Name', 'Total_Sales', 'Unique_Items', 'ABCD_Class']]
-        
-        abcd_filter = st.multiselect("ABCD Class", ['A','B','C','D'], default=['A','B'])
-        filtered = final if not abcd_filter else final[final['ABCD_Class'].isin(abcd_filter)]
-        
-        st.dataframe(filtered.style.format({'Total_Sales': '${:,.0f}'}), use_container_width=True, height=700)
-        
-        customer = st.selectbox("Select Customer to see items bought", options=[""] + list(filtered['Customer_Name']))
-        if customer:
-            items = raw_df[raw_df['Customer_Name'] == customer]
-            st.write(f"**Items bought by {customer}**")
-            st.dataframe(items[['Itemkey', 'Desc1', 'NetVal', 'GAL']].style.format({'NetVal': '${:,.0f}'}), use_container_width=True)
-    
-    st.download_button("📥 Download Current View", filtered.to_csv(index=False), "report.csv", "text/csv")
+        st.write("**All Transactions for this Item**")
+        st.dataframe(detail[['Customer_Name', 'NetVal', 'GAL', 'Qty', 'Invdate']].style.format({
+            'NetVal': '${:,.0f}'
+        }), use_container_width=True)
 else:
     st.info("Upload your Excel file to begin")
