@@ -2,11 +2,15 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="NCP · SKU Rationalization Console", layout="wide")
-st.title("🧩 NCP · SKU Rationalization Console")
-st.markdown("**ABCD Classification & Weighted Ranking Tool**")
 
-@st.cache_data
-def process_data(df):
+st.title("🧩 NCP · SKU Rationalization Console")
+st.caption("ABCD Classification & Weighted Ranking Tool")
+
+uploaded_file = st.file_uploader("Upload Sales Data Excel file", type=["xlsx"])
+
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
+    
     # Item Key View
     item_grouped = df.groupby('Itemkey').agg({
         'NetVal': 'sum',
@@ -24,6 +28,7 @@ def process_data(df):
         'CUSTOM2': 'Technology'
     }).fillna({'Technology': 'Unknown'})
     
+    # Weighted Score
     for col in ['Total_Sales', 'Total_Gallons', 'Total_Orders', 'Active_Customers']:
         maxv = item_grouped[col].max()
         item_grouped[col + '_Norm'] = item_grouped[col] / maxv if maxv > 0 else 0
@@ -40,79 +45,12 @@ def process_data(df):
     
     total_sales = item_grouped['Total_Sales'].sum()
     item_grouped['Cum_Sales_Pct'] = (item_grouped['Total_Sales'].cumsum() / total_sales * 100).round(2)
-    item_grouped['ABCD_Class'] = item_grouped['Cum_Sales_Pct'].apply(
-        lambda x: 'A' if x <= 70 else 'B' if x <= 85 else 'C' if x <= 95 else 'D'
-    )
+    item_grouped['ABCD_Class'] = item_grouped['Cum_Sales_Pct'].apply(lambda x: 'A' if x <= 70 else 'B' if x <= 85 else 'C' if x <= 95 else 'D')
     
-    # Customer View with 70/85/98 buckets
-    cust_grouped = df.groupby('Customer_Name').agg({
-        'NetVal': 'sum',
-        'Itemkey': 'nunique',
-        'Oeordno': 'nunique'
-    }).reset_index()
+    st.subheader("Ranked Items")
+    st.dataframe(item_grouped[['Rank', 'Itemkey', 'Technology', 'Total_Sales', 'ABCD_Class']], use_container_width=True)
     
-    cust_grouped = cust_grouped.rename(columns={
-        'NetVal': 'Total_Sales',
-        'Itemkey': 'Unique_Items',
-        'Oeordno': 'Total_Orders'
-    })
+    st.download_button("Download Report", item_grouped.to_csv(index=False), "report.csv")
     
-    cust_grouped = cust_grouped.sort_values('Total_Sales', ascending=False).reset_index(drop=True)
-    cust_grouped['Rank'] = range(1, len(cust_grouped)+1)
-    
-    total_cust_sales = cust_grouped['Total_Sales'].sum()
-    cust_grouped['Cum_Sales_Pct'] = (cust_grouped['Total_Sales'].cumsum() / total_cust_sales * 100).round(2)
-    cust_grouped['ABCD_Class'] = cust_grouped['Cum_Sales_Pct'].apply(
-        lambda x: 'A' if x <= 70 else 'B' if x <= 85 else 'C' if x <= 98 else 'D'
-    )
-    
-    return item_grouped, cust_grouped
-
-uploaded_file = st.file_uploader("Upload your Sales Data Excel file", type=["xlsx"])
-
-if uploaded_file:
-    with st.spinner("Processing data..."):
-        df = pd.read_excel(uploaded_file)
-        item_data, cust_data = process_data(df)
-    
-    view = st.radio("Select View", ["Item Key View", "Customer View"], horizontal=True)
-    
-    if view == "Item Key View":
-        final = item_data[['Rank', 'Itemkey', 'Technology', 'Total_Sales', 'Total_Gallons', 
-                          'Total_Orders', 'Active_Customers', 'Weighted_Score', 
-                          'ABCD_Class', 'Cum_Sales_Pct']].round(4)
-        
-        col1, col2, col3 = st.columns(3)
-        tech_filter = col1.multiselect("Technology", sorted(final['Technology'].unique()), default=[])
-        abcd_filter = col2.multiselect("ABCD Class", ['A','B','C','D'], default=['A','B'])
-        search = col3.text_input("Search Itemkey", "")
-        
-        filtered = final
-        if tech_filter:
-            filtered = filtered[filtered['Technology'].isin(tech_filter)]
-        if abcd_filter:
-            filtered = filtered[filtered['ABCD_Class'].isin(abcd_filter)]
-        if search:
-            filtered = filtered[filtered['Itemkey'].str.contains(search, case=False, na=False)]
-            
-    else:  # Customer View
-        final = cust_data[['Rank', 'Customer_Name', 'Total_Sales', 'Unique_Items', 
-                          'Total_Orders', 'ABCD_Class', 'Cum_Sales_Pct']].round(2)
-        
-        search = st.text_input("Search Customer Name", "")
-        abcd_filter = st.multiselect("ABCD Class", ['A','B','C','D'], default=['A','B'])
-        
-        filtered = final
-        if abcd_filter:
-            filtered = filtered[filtered['ABCD_Class'].isin(abcd_filter)]
-        if search:
-            filtered = filtered[filtered['Customer_Name'].str.contains(search, case=False, na=False)]
-    
-    st.dataframe(filtered, use_container_width=True, height=700)
-    
-    csv = filtered.to_csv(index=False).encode()
-    st.download_button("📥 Download Current View", csv, f"{view.replace(' ', '_')}_Report.csv", "text/csv")
-    
-    st.caption("Data is cached — switching views is now fast!")
 else:
     st.info("Upload your Excel file to begin analysis")
