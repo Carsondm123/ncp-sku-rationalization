@@ -3,11 +3,5 @@
   "buildCommand": "pip install -r requirements.txt --break-system-packages",
   "outputDirectory": ".",
   "installCommand": "pip install -r requirements.txt --break-system-packages",
-  "framework": null,
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/?path=$1"
-    }
-  ]
+  "framework": null
 }
