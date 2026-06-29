@@ -6,8 +6,9 @@ st.title("🧩 NCP · SKU Rationalization Console")
 st.markdown("**ABCD Classification & Weighted Ranking Tool**")
 
 @st.cache_data
-def process_data(df):
-    # Item Key View
+def load_and_process(uploaded_file):
+    df = pd.read_excel(uploaded_file)
+    # Item Key
     item = df.groupby('Itemkey').agg({
         'NetVal': 'sum',
         'GAL': 'sum',
@@ -41,7 +42,7 @@ def process_data(df):
     item['Cum_Sales_Pct'] = (item['Total_Sales'].cumsum() / total * 100).round(2)
     item['ABCD_Class'] = item['Cum_Sales_Pct'].apply(lambda x: 'A' if x <= 70 else 'B' if x <= 85 else 'C' if x <= 95 else 'D')
     
-    # Customer View
+    # Customer
     cust = df.groupby('Customer_Name').agg({
         'NetVal': 'sum',
         'Itemkey': 'nunique',
@@ -61,24 +62,40 @@ uploaded_file = st.file_uploader("Upload your Sales Data Excel file", type=["xls
 if uploaded_file:
     with st.spinner("Processing..."):
         df = pd.read_excel(uploaded_file)
-        item_data, cust_data, raw_df = process_data(df)
+        item_data, cust_data, raw_df = load_and_process(uploaded_file)
     
     view = st.radio("View Mode", ["Item Key View", "Customer View"], horizontal=True)
     
     if view == "Item Key View":
         final = item_data[['Rank', 'Itemkey', 'Technology', 'Total_Sales', 'ABCD_Class', 'Cum_Sales_Pct']]
-        st.dataframe(final, use_container_width=True, height=700)
-    else:
-        final = cust_data[['Rank', 'Customer_Name', 'Total_Sales', 'Unique_Items', 'ABCD_Class']]
-        st.dataframe(final, use_container_width=True, height=700)
         
-        customer = st.selectbox("Select Customer to see items bought", options=final['Customer_Name'])
+        col1, col2 = st.columns(2)
+        tech_filter = col1.multiselect("Technology", options=sorted(final['Technology'].unique()), default=[])
+        abcd_filter = col2.multiselect("ABCD Class", ['A','B','C','D'], default=['A','B'])
+        
+        filtered = final
+        if tech_filter:
+            filtered = filtered[filtered['Technology'].isin(tech_filter)]
+        if abcd_filter:
+            filtered = filtered[filtered['ABCD_Class'].isin(abcd_filter)]
+        
+        # Format Total Sales as currency
+        st.dataframe(filtered.style.format({'Total_Sales': '${:,.0f}'}), use_container_width=True, height=700)
+        
+    else:  # Customer View
+        final = cust_data[['Rank', 'Customer_Name', 'Total_Sales', 'Unique_Items', 'ABCD_Class']]
+        
+        abcd_filter = st.multiselect("ABCD Class", ['A','B','C','D'], default=['A','B'])
+        filtered = final if not abcd_filter else final[final['ABCD_Class'].isin(abcd_filter)]
+        
+        st.dataframe(filtered.style.format({'Total_Sales': '${:,.0f}'}), use_container_width=True, height=700)
+        
+        customer = st.selectbox("Select Customer to see items bought", options=[""] + list(filtered['Customer_Name']))
         if customer:
             items = raw_df[raw_df['Customer_Name'] == customer]
             st.write(f"**Items bought by {customer}**")
-            st.dataframe(items[['Itemkey', 'Desc1', 'NetVal', 'GAL']], use_container_width=True)
+            st.dataframe(items[['Itemkey', 'Desc1', 'NetVal', 'GAL']].style.format({'NetVal': '${:,.0f}'}), use_container_width=True)
     
-    csv = final.to_csv(index=False).encode()
-    st.download_button("📥 Download Report", csv, "report.csv", "text/csv")
+    st.download_button("📥 Download Current View", filtered.to_csv(index=False), "report.csv", "text/csv")
 else:
     st.info("Upload your Excel file to begin")
