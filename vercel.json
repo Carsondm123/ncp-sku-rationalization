@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "pip install --no-cache-dir -r requirements.txt --break-system-packages --user",
+  "buildCommand": "pip install -r requirements.txt --break-system-packages --user",
   "outputDirectory": ".",
-  "installCommand": "pip install --no-cache-dir -r requirements.txt --break-system-packages --user",
+  "installCommand": "pip install -r requirements.txt --break-system-packages --user",
   "framework": null
 }
